@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Microtonal Keyboard 31TET</title>
+    <style>
+        body,
+        html {
+            width: 100%;
+            height: 100%;
+            padding: 0px;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        canvas {
+            touch-action: manipulation;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas" width="0" height="0"></canvas>
+    <script>
+        let cvs = document.getElementById('canvas')
+        let ctx = cvs.getContext('2d')
+
+        let ROWS = 4
+        let COLS = 12
+
+        let BLOCK_WIDTH = 8 // in 'units'
+        let BLOCK_HEIGHT = 8
+        let RADIUS = 3
+        let WIDTH = COLS * BLOCK_WIDTH + 2
+        let HEIGHT = (ROWS + 1) * BLOCK_HEIGHT + 3
+        let row_offset = [0, 0.5, 0.75, 1.25]
+
+        let BLUE = '#228'
+        let WHITE = '#fff'
+        let BLACK = '#000'
+        let RED = '#d00'
+        let YELLOW = '#fd0'
+
+        let unit = 10 // reassigned later
+        let x0 = 0
+        let y0 = 0
+
+        let keyboard_layout = [
+            [
+                'Digit1',
+                'Digit2',
+                'Digit3',
+                'Digit4',
+                'Digit5',
+                'Digit6',
+                'Digit7',
+                'Digit8',
+                'Digit9',
+                'Digit0',
+                'Minus',
+                'Equal'
+            ],
+            [
+                'KeyQ',
+                'KeyW',
+                'KeyE',
+                'KeyR',
+                'KeyT',
+                'KeyY',
+                'KeyU',
+                'KeyI',
+                'KeyO',
+                'KeyP',
+                'BracketLeft'
+            ],
+            [
+                'KeyA',
+                'KeyS',
+                'KeyD',
+                'KeyF',
+                'KeyG',
+                'KeyH',
+                'KeyJ',
+                'KeyK',
+                'KeyL',
+                'Semicolon'
+            ],
+            [
+                'KeyZ',
+                'KeyX',
+                'KeyC',
+                'KeyV',
+                'KeyB',
+                'KeyN',
+                'KeyM',
+                'Comma',
+                'Period'
+            ]
+        ]
+
+        let notes_names = [
+            'C', 'C+', 'C#',
+            'Db', 'D-', 'D', 'D+', 'D#',
+            'Eb', 'E-', 'E', 'E+',
+            'F-', 'F', 'F+', 'F#',
+            'Gb', 'G-', 'G', 'G+', 'G#',
+            'Ab', 'A-', 'A', 'A+', 'A#',
+            'Bb', 'B-', 'B', 'B+', 'C-'
+        ]
+
+        let root_c = 220 * Math.pow(2, 1 / 4)
+
+        function true_mod(x, m) {
+            return (x % m + m) % m
+        }
+
+        function coords_to_height(i, j) {
+            return 5 * j - 2 * (3 - i)
+        }
+
+        function coords_to_name(i, j) {
+            return notes_names[true_mod(coords_to_height(i, j), 31)]
+        }
+
+        let key_to_coords = new Map()
+        for (let i = 0; i < ROWS; i++) {
+            for (let j = 0; j < keyboard_layout[i].length; j++) {
+                key_to_coords.set(keyboard_layout[i][j], { 'i': i, 'j': j })
+            }
+        }
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+        const oscillator = audioCtx.createOscillator()
+        const gainNode = audioCtx.createGain()
+        oscillator.connect(gainNode)
+        gainNode.connect(audioCtx.destination)
+
+        function resizeCvs() {
+            cvs.width = window.innerWidth
+            cvs.height = window.innerHeight
+            unit = Math.min(Math.floor(cvs.width / WIDTH), Math.floor(cvs.height / HEIGHT))
+            x0 = Math.floor((cvs.width - WIDTH * unit) / 2)
+            y0 = Math.floor((cvs.height - HEIGHT * unit) / 2)
+        }
+
+        function drawKeyboard() {
+            ctx.fillStyle = BLUE
+            ctx.fillRect(x0 + unit, y0 + BLOCK_HEIGHT * unit,
+                COLS * BLOCK_WIDTH * unit, (ROWS * BLOCK_HEIGHT + 2) * unit)
+            for (let i = 0; i < ROWS; i++) {
+                for (let j = 0; j < keyboard_layout[i].length; j++) {
+                    updateBlock(i, j, WHITE)
+                }
+            }
+        }
+
+        function updateBlock(i, j, colour, bg = BLUE) {
+            let x = x0 + (1 + (j + row_offset[i]) * BLOCK_WIDTH) * unit
+            let y = y0 + (1 + (i + 1) * BLOCK_HEIGHT) * unit
+            fillCircle(x + BLOCK_WIDTH / 2 * unit, y + BLOCK_HEIGHT / 2 * unit, (RADIUS + 0.5) * unit, bg)
+            fillCircle(x + BLOCK_WIDTH / 2 * unit, y + BLOCK_HEIGHT / 2 * unit, RADIUS * unit, colour)
+
+            let text_size = (2 * RADIUS - 3) * unit
+            ctx.fillStyle = BLACK
+            ctx.font = 'bold ' + text_size + 'px Century Gothic'
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(coords_to_name(i, j), x + BLOCK_WIDTH / 2 * unit, y + BLOCK_HEIGHT / 2 * unit)
+        }
+
+        function fillCircle(x, y, r, colour) {
+            ctx.beginPath()
+            ctx.arc(x, y, r, 0, 2 * Math.PI, false)
+            ctx.fillStyle = colour
+            ctx.fill()
+        }
+
+        resizeCvs()
+        drawKeyboard()
+
+        function playKey(i, j) {
+            let height = coords_to_height(i, j)
+            let frequency = root_c * Math.pow(2, height / 31)
+            gainNode.gain.value = 0.5 * (1 - height / 60)
+            oscillator.frequency.value = frequency
+            oscillator.start()
+        }
+
+        document.addEventListener('keydown', function (event) {
+            if (key_to_coords.has(event.code) && !event.repeat) {
+                coords = key_to_coords.get(event.code)
+                i = coords['i']
+                j = coords['j']
+                updateBlock(i, j, YELLOW)
+                playKey(i, j)
+            }
+        })
+
+        document.addEventListener('keyup', function (event) {
+            if (key_to_coords.has(event.code)) {
+                coords = key_to_coords.get(event.code)
+                updateBlock(coords['i'], coords['j'], WHITE)
+            }
+        })
+    </script>
+</body>
+
+</html>
